@@ -10,7 +10,7 @@ The whole thing is one file, `index.html`. It needs no network and has no images
 
 1. **Yabby Snap**: tap yabbies in your colour, avoid the purple crabs, and grab gold yabbies for 2.
 2. **Wombat Tug**: tap as fast as you can to drag the stubborn wombat over your line.
-3. **Billabong Bumpers**: air hockey with a gumnut. First to 3 goals.
+3. **Billabong Bumpers**: air hockey with a gumnut. First to 3 goals. Paddles can't enter the striped strip across the middle, so the two players' fingers stay apart; a gumnut that stops in the strip gets bounced back out.
 4. **Pattern Race**: watch the animals flash up, then tap them back first.
 5. **Paddock Grab**: tap the arrows at your edge to steer. Run a fence out from your home paddock and back again, and everything you fence in is yours. Run over the other player's fence to snap it and send them home. Most land after 60 seconds wins.
 
