@@ -12,7 +12,7 @@ The whole thing is one file, `index.html`. It needs no network and has no images
 2. **Wombat Tug**: tap as fast as you can to drag the stubborn wombat over your line.
 3. **Billabong Bumpers**: air hockey with a gumnut. First to 3 goals.
 4. **Pattern Race**: watch the animals flash up, then tap them back first.
-5. **Territory Painter**: hold and drag your paint ball. Most colour after 60 seconds wins.
+5. **Paddock Grab**: tap the arrows at your edge to steer. Run a fence out from your home paddock and back again, and everything you fence in is yours. Run over the other player's fence to snap it and send them home. Most land after 60 seconds wins.
 
 **Team up** (beat your best score together)
 
@@ -34,7 +34,7 @@ Before each game, each player picks **Little**, **Middle** or **Big**. It works 
 | Wombat Tug | How far each tap pulls |
 | Billabong Bumpers | Your paddle size and the width of the goal you defend |
 | Pattern Race | Pattern length (3 / 4 / 5) and how slowly it's shown |
-| Territory Painter | Brush size and rolling speed |
+| Paddock Grab | Size of your home paddock (5×5 / 4×4 / 3×3), and on Little your fence can't be snapped |
 | Pass the Joey | Size of your catch zone and how fast the joey comes to you |
 | Two-Key Treasure Chest | Number of keys (3 / 4 / 5) and how exact the timing must be |
 | Build the Dam | Number of gaps on your side (3 / 4 / 5) and how often rocks wobble |
@@ -43,6 +43,8 @@ Before each game, each player picks **Little**, **Middle** or **Big**. It works 
 ## How it works
 
 - A finger belongs to whoever touched down first on their own side. They can then drag it into the shared middle.
+- Paddock Grab is steered with arrow buttons along each player's own edge, so the two players' fingers never meet in the middle. iPads can merge or drop touches that come close together.
+- If an iPad keeps jumping to the Home Screen or app switcher when lots of fingers are down, turn off Settings → Multitasking & Gestures → Gestures (the four- and five-finger gestures).
 - The pause button sits at the middle of the left edge. A game also pauses itself if the app is switched away.
 - On a landscape screen the board turns so the players still sit at the two short ends.
 - Best scores for the team games are saved on the device.

@@ -1515,128 +1515,202 @@ Party.register({
 <script>
 'use strict';
 /* =====================================================================
-   5. TERRITORY PAINTER — hold to roll paint; most ground after 60s wins.
-   Level: brush size and rolling speed.
+   5. PADDOCK GRAB — run a fence out from your home paddock and back
+   again; everything your fence closes off becomes yours.
+   Steering is by tapping arrow buttons along your own edge, so the two
+   players' fingers never get near each other (iPads can merge or drop
+   touches that come close together).
+   Level: size of your home paddock, and whether your fence can be cut.
    ===================================================================== */
 Party.register({
-  id: 'painter', group: 'versus', mode: 'versus', name: 'Territory Painter',
-  tagline: 'Roll your paint everywhere. Most colour wins.',
-  blurb: 'Hold your finger down and your paint ball rolls after it. Cover the most ground in 60 seconds. Grab the paint pots for a big splat!',
-  levelNotes: ['Big fast brush', 'Medium brush', 'Small brush'],
-  hint: () => 'Hold and drag!',
+  id: 'paddock', group: 'versus', mode: 'versus', name: 'Paddock Grab',
+  tagline: 'Run a fence out and back to grab land.',
+  blurb: 'Tap the arrows to steer. Leave your paddock to build a fence, then get back home. Everything you fence in is yours! Run over their fence to snap it.',
+  levelNotes: ['Big home, fence can\'t snap', 'Medium home', 'Small home'],
+  hint: () => 'Tap the arrows to steer',
   icon(g, s) {
-    g.fillStyle = '#f3e3c3'; g.fillRect(0, 0, s, s);
-    const c = s / 6;
-    for (let y = 0; y < 6; y++) for (let x = 0; x < 6; x++) {
-      const v = Math.sin(x * 1.7 + y * 2.3);
-      if (v > 0.3) { g.fillStyle = Party.COLORS[0].main; g.fillRect(x * c, y * c, c, c); }
-      else if (v < -0.3) { g.fillStyle = Party.COLORS[1].main; g.fillRect(x * c, y * c, c, c); }
+    g.fillStyle = '#efdcb4'; g.fillRect(0, 0, s, s);
+    const c = s / 8;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      if (y >= 5 && x >= 1 && x <= 5) { g.fillStyle = Party.COLORS[0].main; g.fillRect(x * c, y * c, c, c); }
+      if (y <= 2 && x >= 3 && x <= 6) { g.fillStyle = Party.COLORS[1].main; g.fillRect(x * c, y * c, c, c); }
     }
-    Art.circle(g, s * 0.5, s * 0.5, s * 0.14, '#fff');
+    g.fillStyle = Party.COLORS[0].light;
+    for (const [x, y] of [[5, 4], [5, 3], [6, 3], [7, 3], [7, 4], [7, 5]]) { g.fillRect(x * c, y * c, c, c); }
+    Art.circle(g, 7.5 * c, 5.5 * c, c * 0.45, Party.COLORS[0].dark);
   },
   create(E) {
     const W = E.W, H = E.H, HH = E.HH, u = E.u;
-    const COLS = 12, cell = W / COLS, ROWS = Math.ceil(H / cell);
-    const RAD = [1.75, 1.3, 1.0], SPD = [10.5, 8.5, 7], TIME = 60;
-    const grid = new Int8Array(COLS * ROWS).fill(-1);
-    const counts = [0, 0];
-    const blobs = [0, 1].map(p => ({
-      x: W / 2, y: p === 0 ? H - cell * 2.5 : cell * 2.5, tx: 0, ty: 0, id: null,
-      r: cell * RAD[E.levels[p]], spd: u * SPD[E.levels[p]], roll: 0,
-    }));
-    const pots = [], splats = [];
-    let potT = E.rand(5, 8), lastTick = 0, paintSnd = 0;
+    const HOME = [5, 4, 3], SAFE = [true, false, false], SPEED = 4.2, TIME = 60;
+    const ctrlH = u * 2.7;
+    const COLS = 13, cell = W / COLS;
+    const ROWS = Math.max(9, Math.floor((H - 2 * ctrlH) / cell));
+    const gy = (H - ROWS * cell) / 2;
+    const N = COLS * ROWS;
+    const owner = new Int8Array(N).fill(-1);
+    const core = new Int8Array(N).fill(-1);
+    const trail = [new Uint8Array(N), new Uint8Array(N)];
+    const tcount = [0, 0], counts = [0, 0];
+    const idx = (x, y) => y * COLS + x;
+    const mid = Math.floor(COLS / 2);
+    const homeRow = [ROWS - 3, 2];
+    // each home sits toward that player's own left, so the runners don't start head-on
+    const homeCol = [mid - 3, mid + 3];
+    const flashes = [];
+    let lastTick = 0;
 
-    function paint(x, y, r, p) {
-      const c0 = Math.max(0, Math.floor((x - r) / cell)), c1 = Math.min(COLS - 1, Math.floor((x + r) / cell));
-      const r0 = Math.max(0, Math.floor((y - r) / cell)), r1 = Math.min(ROWS - 1, Math.floor((y + r) / cell));
-      for (let j = r0; j <= r1; j++) for (let i = c0; i <= c1; i++) {
-        const cx = (i + 0.5) * cell, cy = (j + 0.5) * cell;
-        if ((cx - x) ** 2 + (cy - y) ** 2 <= r * r) {
-          const k = j * COLS + i, old = grid[k];
-          if (old !== p) { if (old >= 0) counts[old]--; grid[k] = p; counts[p]++; }
-        }
+    for (const p of [0, 1]) {
+      const k = HOME[E.levels[p]], x0 = homeCol[p] - Math.floor(k / 2), y0 = homeRow[p] - Math.floor(k / 2);
+      for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) {
+        const x = x0 + i, y = E.clamp(y0 + j, 0, ROWS - 1), c = idx(x, y);
+        if (owner[c] !== p) { owner[c] = p; core[c] = p; counts[p]++; }
       }
     }
-    paint(blobs[0].x, blobs[0].y, blobs[0].r, 0);
-    paint(blobs[1].x, blobs[1].y, blobs[1].r, 1);
+
+    const up = [{ x: 0, y: -1 }, { x: 0, y: 1 }]; // "toward the middle" for each player
+    const runners = [0, 1].map(p => ({ cx: homeCol[p], cy: homeRow[p], px: homeCol[p], py: homeRow[p], dir: up[p], next: null, t: 0, stun: 0 }));
+
+    function recount() {
+      counts[0] = counts[1] = 0;
+      for (let i = 0; i < N; i++) if (owner[i] >= 0) counts[owner[i]]++;
+    }
+
+    function clearTrail(p) { trail[p].fill(0); tcount[p] = 0; }
+
+    function sendHome(p) {
+      const r = runners[p];
+      clearTrail(p);
+      r.cx = r.px = homeCol[p]; r.cy = r.py = homeRow[p]; r.dir = up[p]; r.next = null; r.stun = 1.0; r.t = 0;
+    }
+
+    function capture(p) {
+      const o = 1 - p;
+      for (let i = 0; i < N; i++) if (trail[p][i]) owner[i] = p;
+      clearTrail(p);
+      // Everything not joined to the other player (their runner or home) is fenced in.
+      const seen = new Uint8Array(N), q = new Int32Array(N);
+      let qh = 0, qt = 0;
+      const push = i => { if (!seen[i] && owner[i] !== p) { seen[i] = 1; q[qt++] = i; } };
+      const ro = runners[o];
+      push(idx(ro.cx, ro.cy));
+      for (let i = 0; i < N; i++) if (core[i] === o) push(i);
+      while (qh < qt) {
+        const i = q[qh++], x = i % COLS, y = (i - x) / COLS;
+        if (x > 0) push(i - 1);
+        if (x < COLS - 1) push(i + 1);
+        if (y > 0) push(i - COLS);
+        if (y < ROWS - 1) push(i + COLS);
+      }
+      let gained = 0;
+      for (let i = 0; i < N; i++) if (!seen[i] && owner[i] !== p) { owner[i] = p; gained++; }
+      recount();
+      Sound.good();
+      if (gained > 3) Sound.pop();
+    }
+
+    function step(p) {
+      const r = runners[p], o = 1 - p;
+      if (r.next) { r.dir = r.next; r.next = null; }
+      const nx = r.cx + r.dir.x, ny = r.cy + r.dir.y;
+      r.px = r.cx; r.py = r.cy;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return; // bump the fence line at the edge; wait for a turn
+      r.cx = nx; r.cy = ny;
+      const k = idx(nx, ny);
+      if (trail[o][k] && !SAFE[E.levels[o]]) {
+        flashes.push({ p: o, t: 0, txt: 'Snap!' });
+        Sound.thud();
+        sendHome(o);
+      }
+      if (owner[k] === p) { if (tcount[p] > 0) capture(p); }
+      else if (!trail[p][k]) { trail[p][k] = 1; tcount[p]++; }
+    }
+
+    // arrow buttons in each player's own view
+    const DIRS = [{ x: -1, y: 0 }, { x: 0, y: -1 }, { x: 0, y: 1 }, { x: 1, y: 0 }];
+    const gap = u * 0.2, bw = (W - u * 0.5 - gap * 3) / 4, bh = u * 1.6, by = HH - bh - u * 0.2;
+    const btns = DIRS.map((d, i) => ({ x: u * 0.25 + i * (bw + gap), y: by, w: bw, h: bh, d }));
+    const pressT = [[0, 0, 0, 0], [0, 0, 0, 0]];
 
     return {
       update(dt) {
+        for (const f of flashes.slice()) { f.t += dt; if (f.t > 1) flashes.splice(flashes.indexOf(f), 1); }
+        for (const p of [0, 1]) for (let i = 0; i < 4; i++) pressT[p][i] = Math.max(0, pressT[p][i] - dt);
         if (E.over) return;
-        blobs.forEach((b, p) => {
-          if (b.id == null) return;
-          const tx = E.clamp(b.tx, 0, W), ty = E.clamp(b.ty, 0, H);
-          const dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy), st = b.spd * dt;
-          if (d > 1) {
-            const k = Math.min(1, st / d);
-            b.x += dx * k; b.y += dy * k; b.roll += d * k / b.r;
-          }
-          paint(b.x, b.y, b.r, p);
-          for (const pot of pots.slice()) {
-            if (Math.hypot(pot.x - b.x, pot.y - b.y) < b.r + u * 0.6) {
-              paint(pot.x, pot.y, cell * 3.6, p); Sound.splash();
-              splats.push({ x: pot.x, y: pot.y, p, t: 0 });
-              pots.splice(pots.indexOf(pot), 1);
-            }
-          }
+        runners.forEach((r, p) => {
+          if (r.stun > 0) { r.stun -= dt; return; }
+          r.t += dt * SPEED;
+          while (r.t >= 1) { r.t -= 1; step(p); }
         });
-        paintSnd -= dt;
-        if (paintSnd <= 0 && (blobs[0].id != null || blobs[1].id != null)) { Sound.paint(); paintSnd = 0.18; }
-        potT -= dt;
-        if (potT <= 0) { potT = E.rand(7, 11); if (pots.length < 2) pots.push({ x: E.rand(0.15, 0.85) * W, y: E.rand(0.3, 0.7) * H, t: 0 }); }
-        for (const pot of pots) pot.t += dt;
-        for (const s of splats.slice()) { s.t += dt; if (s.t > 0.6) splats.splice(splats.indexOf(s), 1); }
         const left = TIME - E.t;
-        if (left < 5.5 && Math.ceil(left) !== lastTick && left > 0) { lastTick = Math.ceil(left); Sound.count(); }
-        if (E.t >= TIME) {
-          E.finish({ winner: counts[0] > counts[1] ? 0 : counts[1] > counts[0] ? 1 : null });
-        }
+        if (left < 5.5 && left > 0 && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); Sound.count(); }
+        if (E.t >= TIME) E.finish({ winner: counts[0] > counts[1] ? 0 : counts[1] > counts[0] ? 1 : null });
       },
-      down(p, x, y, id) { const b = blobs[p]; if (b.id == null) { b.id = id; b.tx = x; b.ty = y; } },
-      move(p, x, y, id) { const b = blobs[p]; if (b.id === id) { b.tx = x; b.ty = y; } },
-      up(p, x, y, id) { const b = blobs[p]; if (b.id === id) b.id = null; },
-      cancel() { blobs[0].id = blobs[1].id = null; },
+      down(p, x, y) {
+        const l = E.local(p, x, y);
+        const i = btns.findIndex(b => l.x >= b.x - gap / 2 && l.x <= b.x + b.w + gap / 2 && l.y >= b.y - u * 0.6 && l.y <= HH);
+        if (i < 0) return;
+        const d = btns[i].d;
+        runners[p].next = p === 0 ? { x: d.x, y: d.y } : { x: -d.x, y: -d.y };
+        pressT[p][i] = 0.18;
+        Sound.tap(p);
+      },
       draw(g) {
-        g.fillStyle = '#f3e3c3'; g.fillRect(0, 0, W, H);
-        g.strokeStyle = 'rgba(160,120,70,0.15)'; g.lineWidth = 1;
-        for (let i = 1; i < COLS; i++) { g.beginPath(); g.moveTo(i * cell, 0); g.lineTo(i * cell, H); g.stroke(); }
-        for (let j = 1; j < ROWS; j++) { g.beginPath(); g.moveTo(0, j * cell); g.lineTo(W, j * cell); g.stroke(); }
+        g.fillStyle = '#c99a62'; g.fillRect(0, 0, W, H);
+        g.fillStyle = '#efdcb4'; g.fillRect(0, gy, W, ROWS * cell);
         for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) {
-          const v = grid[j * COLS + i];
-          if (v < 0) continue;
-          g.fillStyle = Party.COLORS[v].main;
-          g.fillRect(i * cell - 0.5, j * cell - 0.5, cell + 1, cell + 1);
+          const k = idx(i, j), x = i * cell, y = gy + j * cell;
+          if (owner[k] >= 0) {
+            g.fillStyle = Party.COLORS[owner[k]].main; g.fillRect(x - 0.5, y - 0.5, cell + 1, cell + 1);
+            if (core[k] >= 0) Art.circle(g, x + cell / 2, y + cell / 2, cell * 0.12, 'rgba(255,255,255,0.45)');
+          }
+          for (const p of [0, 1]) {
+            if (!trail[p][k]) continue;
+            const c = Party.COLORS[p];
+            g.fillStyle = c.light; g.fillRect(x + cell * 0.12, y + cell * 0.12, cell * 0.76, cell * 0.76);
+            g.strokeStyle = c.dark; g.lineWidth = Math.max(1.5, cell * 0.08); g.strokeRect(x + cell * 0.12, y + cell * 0.12, cell * 0.76, cell * 0.76);
+          }
         }
-        for (const s of splats) Art.circle(g, s.x, s.y, cell * 3.6 * (0.5 + s.t), `rgba(255,255,255,${0.5 - s.t * 0.8})`);
-        for (const pot of pots) {
-          const bob = Math.sin(pot.t * 5) * u * 0.1;
-          Art.circle(g, pot.x, pot.y, u * 0.95 + Math.sin(pot.t * 6) * u * 0.1, 'rgba(255,255,255,0.6)');
-          Art.rr(g, pot.x - u * 0.5, pot.y - u * 0.35 + bob, u, u * 0.85, u * 0.15); g.fillStyle = '#9aa3ab'; g.fill();
-          Art.ell(g, pot.x, pot.y - u * 0.35 + bob, u * 0.5, u * 0.18, 0, '#ff4fa3');
-          Art.star(g, pot.x, pot.y + u * 0.12 + bob, u * 0.25, '#ffd23f');
-        }
-        blobs.forEach((b, p) => {
-          const c = Party.COLORS[p];
-          Art.circle(g, b.x + u * 0.1, b.y + u * 0.14, b.r * 0.72, 'rgba(0,0,0,0.25)');
-          Art.circle(g, b.x, b.y, b.r * 0.72, c.dark);
-          Art.circle(g, b.x, b.y, b.r * 0.62, c.main);
-          g.strokeStyle = c.light; g.lineWidth = b.r * 0.12;
-          g.beginPath(); g.arc(b.x, b.y, b.r * 0.4, b.roll, b.roll + 2); g.stroke();
-          Art.circle(g, b.x - b.r * 0.22, b.y - b.r * 0.22, b.r * 0.12, 'rgba(255,255,255,0.7)');
+        g.strokeStyle = 'rgba(120,80,40,0.12)'; g.lineWidth = 1;
+        for (let i = 1; i < COLS; i++) { g.beginPath(); g.moveTo(i * cell, gy); g.lineTo(i * cell, gy + ROWS * cell); g.stroke(); }
+        for (let j = 1; j < ROWS; j++) { g.beginPath(); g.moveTo(0, gy + j * cell); g.lineTo(W, gy + j * cell); g.stroke(); }
+        g.strokeStyle = '#7a4f22'; g.lineWidth = 3; g.strokeRect(0, gy, W, ROWS * cell);
+        runners.forEach((r, p) => {
+          const c = Party.COLORS[p], f = r.stun > 0 ? 1 : Math.min(1, r.t);
+          const x = (r.px + (r.cx - r.px) * f + 0.5) * cell, y = gy + (r.py + (r.cy - r.py) * f + 0.5) * cell;
+          if (r.stun > 0 && Math.floor(r.stun * 10) % 2) return;
+          Art.circle(g, x + 2, y + 3, cell * 0.48, 'rgba(0,0,0,0.25)');
+          Art.circle(g, x, y, cell * 0.48, '#fff');
+          Art.circle(g, x, y, cell * 0.38, c.dark);
+          const ex = r.dir.x * cell * 0.14, ey = r.dir.y * cell * 0.14, sx = -r.dir.y * cell * 0.13, sy = r.dir.x * cell * 0.13;
+          Art.circle(g, x + ex + sx, y + ey + sy, cell * 0.09, '#fff');
+          Art.circle(g, x + ex - sx, y + ey - sy, cell * 0.09, '#fff');
         });
-        const total = COLS * ROWS, left = Math.max(0, Math.ceil(TIME - E.t));
+        const left = Math.max(0, Math.ceil(TIME - E.t));
         for (const p of [0, 1]) E.inPlayer(p, () => {
           const c = Party.COLORS[p];
-          const bw = W * 0.7, bx = (W - bw) / 2, by = HH - u * 0.75, bh = u * 0.45;
-          Art.rr(g, bx - 3, by - 3, bw + 6, bh + 6, bh); g.fillStyle = 'rgba(255,255,255,0.85)'; g.fill();
-          const mine = counts[p] / total, theirs = counts[1 - p] / total;
-          g.save(); Art.rr(g, bx, by, bw, bh, bh / 2); g.clip();
-          g.fillStyle = c.main; g.fillRect(bx, by, bw * mine, bh);
-          g.fillStyle = Party.COLORS[1 - p].main; g.fillRect(bx + bw * (1 - theirs), by, bw * theirs, bh);
+          // score bar + timer
+          const barY = HH - ctrlH + u * 0.25, bh2 = u * 0.4, bx = u * 1.2, bw2 = W - u * 2.6;
+          Art.rr(g, bx - 2, barY - 2, bw2 + 4, bh2 + 4, bh2); g.fillStyle = 'rgba(255,255,255,0.85)'; g.fill();
+          const mine = counts[p] / N, theirs = counts[1 - p] / N;
+          g.save(); Art.rr(g, bx, barY, bw2, bh2, bh2 / 2); g.clip();
+          g.fillStyle = c.main; g.fillRect(bx, barY, bw2 * mine, bh2);
+          g.fillStyle = Party.COLORS[1 - p].main; g.fillRect(bx + bw2 * (1 - theirs), barY, bw2 * theirs, bh2);
           g.restore();
-          E.text(Math.round(mine * 100) + '%', bx - u * 0.1, by + bh / 2, u * 0.45, c.dark, { align: 'right', stroke: '#fff' });
-          E.text(left + 's', W - u * 0.6, by + bh / 2, u * 0.45, '#3d2614', { stroke: '#fff' });
+          E.text(Math.round(mine * 100) + '%', bx - u * 0.1, barY + bh2 / 2, u * 0.4, '#fff', { align: 'right', stroke: c.dark });
+          E.text(left + 's', W - u * 0.15, barY + bh2 / 2, u * 0.4, '#fff', { align: 'right', stroke: '#3d2614' });
+          // arrow buttons
+          btns.forEach((b, i) => {
+            const pr = pressT[p][i] > 0, off = pr ? u * 0.08 : 0;
+            g.fillStyle = 'rgba(60,30,10,0.3)'; Art.rr(g, b.x, b.y + u * 0.1, b.w, b.h, u * 0.35); g.fill();
+            Art.rr(g, b.x, b.y + off, b.w, b.h, u * 0.35); g.fillStyle = pr ? c.dark : c.main; g.fill();
+            const cx = b.x + b.w / 2, cy = b.y + b.h / 2 + off, s = Math.min(b.w, b.h) * 0.28;
+            g.save(); g.translate(cx, cy); g.rotate(Math.atan2(b.d.y, b.d.x));
+            g.fillStyle = '#fff'; g.beginPath(); g.moveTo(s, 0); g.lineTo(-s * 0.7, -s * 0.85); g.lineTo(-s * 0.7, s * 0.85); g.closePath(); g.fill();
+            g.restore();
+          });
+        });
+        for (const f of flashes) E.inPlayer(f.p, () => {
+          E.text(f.txt + ' Back home!', W / 2, HH * 0.4 - f.t * u, u * 0.8, `rgba(255,255,255,${1 - f.t})`, { stroke: `rgba(120,40,40,${1 - f.t})` });
         });
       },
     };
