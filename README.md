@@ -1,6 +1,6 @@
 # Outback Party
 
-Twenty two-player mini games for one phone or tablet. Lay the device flat between two kids, one at each end. Each player's half of the screen is turned to face them, and both play at the same time.
+Twenty-one two-player mini games for one phone or tablet. Lay the device flat between two kids, one at each end. Each player's half of the screen is turned to face them, and both play at the same time.
 
 The whole thing is one file, `index.html`. It needs no network and has no images or sound files. Every creature and sound is made in code, so it works offline once it's loaded.
 
@@ -20,6 +20,7 @@ The whole thing is one file, `index.html`. It needs no network and has no images
 - **Boomerang Throw**: hold to power up, let go to throw, knock over targets, then tap to catch it on the way back.
 - **Outback Snap**: hit SNAP when the new card matches the one before. A wrong snap freezes you.
 - **Dot the Stars**: tap stars on your half before they fade. Both halves get the same stars.
+- **Bouncy Blob**: the blob falls toward you; double-tap your side to bounce it over. Tap to one side of it to aim. Let it drop past your edge and the other player scores. Stars score for whoever bounced it last, and the red bars drop your shot back to you.
 
 **Team up** (beat your best score together)
 
@@ -57,6 +58,7 @@ Before each game, each player picks **Little**, **Middle** or **Big**. It works 
 | Boomerang Throw | Target size and how long the catch window is |
 | Outback Snap | How long a wrong snap freezes you |
 | Dot the Stars | How long each star stays lit |
+| Bouncy Blob | How fast the blob falls on your side, and how quick your double-tap has to be |
 | Campfire Cook-up | How many foods you look after (2 / 3 / 4) |
 | Night Sky Torch | Number of trees (3 / 4 / 5, from the smaller level of the two) |
 | Rescue Raft | How hard your taps push |

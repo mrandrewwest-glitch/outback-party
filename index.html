@@ -3345,6 +3345,155 @@ Party.register({
 </script>
 <script>
 'use strict';
+/* =====================================================================
+   21. BOUNCY BLOB — the blob falls toward whoever's half it's in;
+   double-tap your half to bounce it over to the other side. Let it
+   drop past your edge and the other player scores. Stars score for
+   whoever bounced it last; the red bars knock it back to the sender.
+   Level: how fast it falls on your side, and how quick the double-tap
+   has to be.
+   ===================================================================== */
+Party.register({
+  id: 'blob', group: 'versus', mode: 'versus', name: 'Bouncy Blob',
+  tagline: 'Double-tap to bounce the blob to the other side!',
+  blurb: "The blob falls toward you. DOUBLE-TAP your side to bounce it over! Tap to one side of it to aim the other way. Grab stars, and dodge the red bars or it drops back to you.",
+  levelNotes: ['Slow fall, easy double-tap', 'Medium', 'Fast fall'],
+  hint: () => 'Double-tap to bounce!',
+  icon(g, s) {
+    g.fillStyle = '#1c1c22'; g.fillRect(0, 0, s, s);
+    g.fillStyle = '#ff3d6e'; g.fillRect(s * 0.1, s * 0.3, s * 0.3, s * 0.06);
+    Art.circle(g, s * 0.55, s * 0.55, s * 0.2, 'rgba(78,205,196,0.3)');
+    Art.circle(g, s * 0.55, s * 0.55, s * 0.15, '#4ecdc4');
+    Art.star(g, s * 0.3, s * 0.75, s * 0.08, '#ffd23f');
+  },
+  create(E) {
+    const W = E.W, H = E.H, HH = E.HH, u = E.u;
+    const FALL = [0.62, 0.8, 1], TAPWIN = [0.55, 0.42, 0.32], NEED = 5;
+    const COLS = ['#4ecdc4', '#ff6b6b', '#ffd23f', '#ff6ec7', '#4ab3e0', '#98e0c8'];
+    const g0 = u * 15;
+    const b = { x: W / 2, y: HH, vx: 0, vy: 0, r: u * 0.75, col: 0, last: null, squash: 0 };
+    const pts = [0, 0], lastTap = [-9, -9], flash = [0, 0];
+    let rally = 0, state = 'serve', stateT = 1.0, serveTo = E.randInt(2), missBy = null;
+    const bars = [0, 1].map(p => ({ p, x: E.rand(0.2, 0.8) * W, w: W * 0.2, h: u * 0.32, vx: (Math.random() < 0.5 ? -1 : 1) * u * E.rand(1.8, 2.8) }));
+    const barY = p => (p === 0 ? HH + HH * 0.38 : HH - HH * 0.38);
+    const stars = [], pops = [];
+    let starT = E.rand(2, 4);
+    const half = y => (y >= HH ? 0 : 1);
+    const toward = p => (p === 0 ? 1 : -1); // +y is toward Blue's edge
+
+    function serve() {
+      b.x = W / 2; b.y = HH + toward(serveTo) * u * 0.5;
+      b.vx = E.rand(-1.5, 1.5) * u; b.vy = toward(serveTo) * u * 2; b.last = null; state = 'play';
+    }
+    function score(p, txt) {
+      pts[p]++; pops.push({ p, t: 0, txt });
+      if (pts[p] >= NEED) E.finish({ winner: p });
+    }
+
+    return {
+      blob: b,
+      update(dt) {
+        for (const p of [0, 1]) flash[p] = Math.max(0, flash[p] - dt * 3);
+        for (const q of pops.slice()) { q.t += dt; if (q.t > 1.2) pops.splice(pops.indexOf(q), 1); }
+        b.squash = Math.max(0, b.squash - dt * 4);
+        for (const br of bars) {
+          br.x += br.vx * dt;
+          if (br.x < br.w / 2) { br.x = br.w / 2; br.vx = Math.abs(br.vx); }
+          if (br.x > W - br.w / 2) { br.x = W - br.w / 2; br.vx = -Math.abs(br.vx); }
+        }
+        for (const st of stars) st.t += dt;
+        if (E.over) return;
+        if (state === 'serve') { stateT -= dt; if (stateT <= 0) serve(); return; }
+        if (state === 'miss') { stateT -= dt; if (stateT <= 0) { state = 'serve'; stateT = 0.6; serveTo = missBy; b.x = W / 2; b.y = HH; b.vx = b.vy = 0; } return; }
+        // gravity pulls toward the edge of whichever half the blob is in
+        const p = half(b.y);
+        b.vy += toward(p) * g0 * FALL[E.levels[p]] * dt;
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
+        if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
+        // red bars send it back where it came from
+        for (const br of bars) {
+          const by = barY(br.p);
+          if (Math.sign(b.vy) !== -toward(br.p)) continue; // only outgoing shots get blocked
+          if (Math.abs(b.x - br.x) < br.w / 2 + b.r * 0.7 && Math.abs(b.y - by) < br.h / 2 + b.r) {
+            const dir = Math.sign(b.y - by) || 1;
+            if (Math.sign(b.vy) !== dir) {
+              b.vy = dir * Math.max(Math.abs(b.vy) * 0.45, u * 3); b.y = by + dir * (br.h / 2 + b.r);
+              b.squash = 1; Sound.bad();
+            }
+          }
+        }
+        // stars
+        starT -= dt;
+        if (starT <= 0 && stars.length < 2) { starT = E.rand(3, 5); stars.push({ x: E.rand(0.15, 0.85) * W, y: HH + E.rand(-0.55, 0.55) * HH, t: 0 }); }
+        for (const st of stars.slice()) {
+          if (Math.hypot(st.x - b.x, st.y - b.y) < b.r + u * 0.4 && b.last != null) {
+            stars.splice(stars.indexOf(st), 1); Sound.good(); score(b.last, 'Star! +1');
+            if (E.over) return;
+          }
+        }
+        // off an edge
+        if (b.y > H + b.r || b.y < -b.r) {
+          missBy = b.y > H ? 0 : 1;
+          Sound.thud(); score(1 - missBy, 'Point!'); rally = 0;
+          state = 'miss'; stateT = 1.0;
+        }
+      },
+      down(p, x) {
+        if (E.over || state !== 'play') { lastTap[p] = E.t; return; }
+        const isDouble = E.t - lastTap[p] <= TAPWIN[E.levels[p]];
+        lastTap[p] = E.t;
+        if (!isDouble) return;
+        lastTap[p] = -9;
+        const heading = Math.sign(b.vy) === toward(p) || Math.abs(b.vy) < u;
+        if (half(b.y) !== p || !heading) return;
+        // enough speed to get over the middle, plus a bit
+        const dc = Math.abs(b.y - HH);
+        const sp = Math.sqrt(2 * g0 * FALL[E.levels[p]] * dc) + u * 5.5;
+        b.vy = -toward(p) * sp;
+        // tap to one side of the blob to send it the other way
+        b.vx = E.clamp(((b.x - x) / W) * u * 16 + E.rand(-1, 1) * u, -u * 6, u * 6);
+        b.last = p; b.col = (b.col + 1) % COLS.length; b.squash = 1;
+        rally++; flash[p] = 1; Sound.boing();
+      },
+      draw(g) {
+        g.fillStyle = '#1c1c22'; g.fillRect(0, 0, W, H);
+        g.strokeStyle = 'rgba(78,205,196,0.5)'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+        g.strokeStyle = 'rgba(255,255,255,0.12)'; g.setLineDash([u * 0.3, u * 0.3]);
+        g.beginPath(); g.moveTo(0, HH); g.lineTo(W, HH); g.stroke(); g.setLineDash([]);
+        const inHalf = state === 'play' ? half(b.y) : null;
+        for (const p of [0, 1]) E.inPlayer(p, () => {
+          const c = Party.COLORS[p];
+          const mine = inHalf === p && (Math.sign(b.vy) === toward(p) || Math.abs(b.vy) < u);
+          g.fillStyle = c.main; g.globalAlpha = 0.08 + flash[p] * 0.25 + (mine ? 0.06 : 0); g.fillRect(0, 0, W, HH); g.globalAlpha = 1;
+          g.fillStyle = c.main; g.fillRect(0, HH - u * 0.12, W, u * 0.12);
+          for (let i = 0; i < NEED; i++) Art.star(g, W - u * 0.7 - i * u * 0.85, HH - u * 0.7, u * 0.32, i < pts[p] ? '#ffd23f' : 'rgba(255,255,255,0.12)', i < pts[p] ? '#b8860b' : null);
+          E.text('Bounces', u * 0.4, HH - u * 1.05, u * 0.3, 'rgba(255,255,255,0.6)', { align: 'left', weight: 600 });
+          E.text(String(rally), u * 0.4, HH - u * 0.55, u * 0.6, '#4ecdc4', { align: 'left' });
+          if (mine) E.text('DOUBLE-TAP!', W / 2, HH * 0.8, u * 0.75, '#fff', { stroke: c.dark });
+          for (const q of pops) if (q.p === p) E.text(q.txt, W / 2, HH * 0.45 - q.t * u, u * 0.8, `rgba(255,210,63,${1 - q.t / 1.2})`, { stroke: `rgba(0,0,0,${0.6 - q.t / 2})` });
+        });
+        for (const br of bars) {
+          const y = barY(br.p);
+          g.fillStyle = 'rgba(255,61,110,0.25)'; Art.rr(g, br.x - br.w / 2 - 4, y - br.h / 2 - 4, br.w + 8, br.h + 8, br.h); g.fill();
+          g.fillStyle = '#ff3d6e'; Art.rr(g, br.x - br.w / 2, y - br.h / 2, br.w, br.h, br.h / 2); g.fill();
+        }
+        for (const st of stars) Art.star(g, st.x, st.y, u * 0.38 * (1 + Math.sin(st.t * 5) * 0.08) * Math.min(1, st.t * 4), '#ffd23f', '#fff3b0');
+        if (state === 'play' || state === 'serve') {
+          const col = COLS[b.col], sq = b.squash * 0.18;
+          const glow = g.createRadialGradient(b.x, b.y, b.r * 0.5, b.x, b.y, b.r * 1.8);
+          glow.addColorStop(0, col + '88'); glow.addColorStop(1, col + '00');
+          g.fillStyle = glow; g.beginPath(); g.arc(b.x, b.y, b.r * 1.8, 0, Math.PI * 2); g.fill();
+          Art.ell(g, b.x, b.y, b.r * (1 + sq), b.r * (1 - sq), 0, col);
+          Art.ell(g, b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.25, b.r * 0.18, -0.6, 'rgba(255,255,255,0.35)');
+        }
+      },
+    };
+  },
+});
+</script>
+<script>
+'use strict';
 Party.boot();
 </script>
 </body>
