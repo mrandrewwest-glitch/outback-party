@@ -66,7 +66,7 @@ Before each game, each player picks **Little**, **Middle** or **Big**. It works 
 ## How it works
 
 - A finger belongs to whoever touched down first on their own side. They can then drag it into the shared middle.
-- Paddock Grab and all of games 10–20 keep each player's fingers at their own end, using taps and holds only, so the two players' fingers never meet in the middle. iPads can merge or drop touches that come close together.
+- Paddock Grab and every game from Emu Race onward keep each player's fingers at their own end, using taps and holds only, so the two players' fingers never meet in the middle. iPads can merge or drop touches that come close together.
 - If an iPad keeps jumping to the Home Screen or app switcher when lots of fingers are down, turn off Settings → Multitasking & Gestures → Gestures (the four- and five-finger gestures).
 - The pause button sits at the middle of the left edge. A game also pauses itself if the app is switched away.
 - On a landscape screen the board turns so the players still sit at the two short ends.
